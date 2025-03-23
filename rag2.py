@@ -235,4 +235,9 @@ else:
 if st.session_state.pdfs_processed and st.session_state.messages:
     if st.button("Reiniciar conversación"):
         st.session_state.messages = []
-        st.experimental_rerun()
+        st.session_state.retriever = None
+        st.session_state.llm = None
+        st.session_state.pdfs_processed = False
+        st.session_state.api_key_validated = False
+        st.session_state.relevance_threshold = 0.3  # Restablecer a valor predeterminado
+        st.success("Conversación reiniciada.")
