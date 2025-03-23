@@ -11,6 +11,103 @@ from dotenv import load_dotenv
 st.set_page_config(page_title="Chat con tus PDFs usando Groq", layout="wide")
 st.title("Chat con tus PDFs usando Groq")
 
+# Clase simple para almacenamiento y recuperación de texto
+class SimpleRetriever:
+    def __init__(self):
+        self.documents = []
+    
+    def add_documents(self, documents):
+        self.documents.extend(documents)
+    
+    def get_relevant_documents(self, query, k=3):
+        # Búsqueda básica basada en coincidencia de palabras
+        query_words = set(query.lower().split())
+        scored_docs = []
+        
+        for doc in self.documents:
+            content = doc.page_content.lower()
+            # Contar cuántas palabras de la consulta aparecen en el documento
+            word_matches = sum(1 for word in query_words if word in content)
+            # Calcular puntuación de similitud simple
+            score = word_matches / len(query_words) if query_words else 0
+            scored_docs.append((doc, score))
+        
+        # Ordenar por puntuación y devolver los k mejores
+        scored_docs.sort(key=lambda x: x[1], reverse=True)
+        return [doc for doc, _ in scored_docs[:k]]
+
+# Función para evaluar la relevancia de los documentos para la consulta
+def evaluate_document_relevance(docs, query):
+    if not docs:
+        return 0.0
+    
+    # Palabras clave de la consulta
+    query_words = set(query.lower().split())
+    if not query_words:
+        return 0.0
+    
+    # Calcular relevancia promedio
+    total_relevance = 0
+    for doc in docs:
+        content = doc.page_content.lower()
+        word_matches = sum(1 for word in query_words if word in content)
+        doc_relevance = word_matches / len(query_words)
+        total_relevance += doc_relevance
+    
+    return total_relevance / len(docs)
+
+# Función para generar respuesta
+def generate_response(query):
+    # Obtener documentos relevantes
+    docs = st.session_state.retriever.get_relevant_documents(query, k=5)
+    
+    # Evaluar relevancia de los documentos
+    relevance_score = evaluate_document_relevance(docs, query)
+    
+    # Verificar si la relevancia es suficiente
+    if relevance_score >= st.session_state.relevance_threshold:
+        # Crear contexto a partir de los documentos
+        context = "\n\n".join([doc.page_content for doc in docs])
+        
+        # Crear mensaje con el contexto y la pregunta
+        system_message = """
+        Eres un asistente experto que responde preguntas basándose en los documentos proporcionados.
+        Responde de manera concisa y basándote solo en la información proporcionada.
+        Si la información necesaria no está en los documentos, indícalo claramente.
+        """
+        
+        user_message = f"""
+        Contexto de los documentos:
+        {context}
+        
+        Mi pregunta es: {query}
+        """
+        
+        # Indicar que la respuesta está basada en documentos
+        source_type = "documentos"
+    else:
+        # Si la relevancia es baja, usar conocimiento general del modelo
+        system_message = """
+        Eres un asistente experto que responde preguntas utilizando tu conocimiento general.
+        Responde de manera concisa y útil.
+        """
+        
+        user_message = query
+        
+        # Indicar que la respuesta está basada en conocimiento general
+        source_type = "conocimiento general"
+    
+    # Generar respuesta
+    response = st.session_state.llm.invoke(
+        [{"role": "system", "content": system_message},
+         {"role": "user", "content": user_message}]
+    )
+    
+    # Agregar indicador de fuente
+    full_response = f"{response.content}\n\n*Respuesta basada en: {source_type}*"
+    
+    return full_response
+
 # Inicializar variables de estado en la sesión
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -138,103 +235,6 @@ with st.sidebar:
                     st.error(f"Error al procesar los documentos: {str(e)}")
                     import traceback
                     st.code(traceback.format_exc())
-
-# Clase simple para almacenamiento y recuperación de texto
-class SimpleRetriever:
-    def __init__(self):
-        self.documents = []
-    
-    def add_documents(self, documents):
-        self.documents.extend(documents)
-    
-    def get_relevant_documents(self, query, k=3):
-        # Búsqueda básica basada en coincidencia de palabras
-        query_words = set(query.lower().split())
-        scored_docs = []
-        
-        for doc in self.documents:
-            content = doc.page_content.lower()
-            # Contar cuántas palabras de la consulta aparecen en el documento
-            word_matches = sum(1 for word in query_words if word in content)
-            # Calcular puntuación de similitud simple
-            score = word_matches / len(query_words) if query_words else 0
-            scored_docs.append((doc, score))
-        
-        # Ordenar por puntuación y devolver los k mejores
-        scored_docs.sort(key=lambda x: x[1], reverse=True)
-        return [doc for doc, _ in scored_docs[:k]]
-
-# Función para evaluar la relevancia de los documentos para la consulta
-def evaluate_document_relevance(docs, query):
-    if not docs:
-        return 0.0
-    
-    # Palabras clave de la consulta
-    query_words = set(query.lower().split())
-    if not query_words:
-        return 0.0
-    
-    # Calcular relevancia promedio
-    total_relevance = 0
-    for doc in docs:
-        content = doc.page_content.lower()
-        word_matches = sum(1 for word in query_words if word in content)
-        doc_relevance = word_matches / len(query_words)
-        total_relevance += doc_relevance
-    
-    return total_relevance / len(docs)
-
-# Función para generar respuesta
-def generate_response(query):
-    # Obtener documentos relevantes
-    docs = st.session_state.retriever.get_relevant_documents(query, k=5)
-    
-    # Evaluar relevancia de los documentos
-    relevance_score = evaluate_document_relevance(docs, query)
-    
-    # Verificar si la relevancia es suficiente
-    if relevance_score >= st.session_state.relevance_threshold:
-        # Crear contexto a partir de los documentos
-        context = "\n\n".join([doc.page_content for doc in docs])
-        
-        # Crear mensaje con el contexto y la pregunta
-        system_message = """
-        Eres un asistente experto que responde preguntas basándose en los documentos proporcionados.
-        Responde de manera concisa y basándote solo en la información proporcionada.
-        Si la información necesaria no está en los documentos, indícalo claramente.
-        """
-        
-        user_message = f"""
-        Contexto de los documentos:
-        {context}
-        
-        Mi pregunta es: {query}
-        """
-        
-        # Indicar que la respuesta está basada en documentos
-        source_type = "documentos"
-    else:
-        # Si la relevancia es baja, usar conocimiento general del modelo
-        system_message = """
-        Eres un asistente experto que responde preguntas utilizando tu conocimiento general.
-        Responde de manera concisa y útil.
-        """
-        
-        user_message = query
-        
-        # Indicar que la respuesta está basada en conocimiento general
-        source_type = "conocimiento general"
-    
-    # Generar respuesta
-    response = st.session_state.llm.invoke(
-        [{"role": "system", "content": system_message},
-         {"role": "user", "content": user_message}]
-    )
-    
-    # Agregar indicador de fuente
-    full_response = f"{response.content}\n\n*Respuesta basada en: {source_type}*"
-    
-    return full_response
 
 # Área principal para el chat
 if not st.session_state.api_key_validated:
