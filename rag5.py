@@ -241,18 +241,16 @@ with st.sidebar:
             if uploaded_files and not st.session_state.pdfs_processed:
                 with st.spinner("Procesando PDFs..."):
                     try:
-                        temp_files = []
                         documents = []
                         for file in uploaded_files:
                             temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
                             temp_file.write(file.read())
-                            temp_files.append(temp_file.name)
                             temp_file.close()
 
                             # Cargar y procesar cada PDF
                             loader = PyPDFLoader(temp_file.name)
                             documents.extend(loader.load())
-                        
+                            
                         if not documents:
                             st.error("No se pudieron cargar documentos.")
                             st.stop()
@@ -263,11 +261,10 @@ with st.sidebar:
                         )
                         chunks = text_splitter.split_documents(documents)
                         
-                        retriever = SimpleRetriever()
-                        retriever.add_documents(chunks)
-                        st.session_state.retriever = retriever
+                        st.session_state.retriever.add_documents(chunks)  # Agregar nuevos documentos al retriever
                         
-                        for path in temp_files:
+                        # Eliminar archivos temporales
+                        for path in [temp_file.name for temp_file in uploaded_files]:
                             try:
                                 os.unlink(path)
                             except:
