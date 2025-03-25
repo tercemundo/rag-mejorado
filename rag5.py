@@ -134,7 +134,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 if "retriever" not in st.session_state:
-    st.session_state.retriever = None
+    st.session_state.retriever = SimpleRetriever()  # Inicializar un retriever vacío
 
 if "llm" not in st.session_state:
     st.session_state.llm = None
@@ -282,10 +282,9 @@ with st.sidebar:
                         st.code(traceback.format_exc())
         else:
             # Si se usa solo el conocimiento del modelo, creamos un retriever vacío
-            if st.session_state.retriever is None:
-                st.session_state.retriever = SimpleRetriever()
-                st.session_state.pdfs_processed = True
-                st.info("Modo de solo conocimiento del modelo activado. No se usarán PDFs.")
+            st.session_state.retriever = SimpleRetriever()
+            st.session_state.pdfs_processed = True
+            st.info("Modo de solo conocimiento del modelo activado. No se usarán PDFs.")
 
         # Inicializar el modelo LLM si aún no se ha hecho
         if st.session_state.llm is None and st.session_state.api_key_validated:
@@ -303,7 +302,6 @@ if not st.session_state.api_key_validated:
     st.info("Por favor, ingresa tu API key de Groq en la barra lateral para comenzar.")
 elif not st.session_state.pdfs_processed:
     if st.session_state.use_only_model_knowledge:
-        # Si estamos solo usando el modelo, no necesitamos PDFs
         st.session_state.pdfs_processed = True
         st.session_state.retriever = SimpleRetriever()
     else:
@@ -335,7 +333,7 @@ if st.session_state.api_key_validated and st.session_state.pdfs_processed:
 if st.session_state.pdfs_processed and st.session_state.messages:
     if st.button("Reiniciar conversación"):
         st.session_state.messages = []
-        st.session_state.retriever = None
+        st.session_state.retriever = SimpleRetriever()  # Reinicia el retriever
         st.session_state.llm = None
         st.session_state.pdfs_processed = False
         st.session_state.api_key_validated = False
