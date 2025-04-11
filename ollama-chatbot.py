@@ -5,8 +5,8 @@ import time
 # Set page configuration
 st.set_page_config(page_title="Ollama Chatbot", page_icon="🤖")
 
-# Ollama API endpoint
-OLLAMA_API_URL = "https://5c3e-34-82-129-29.ngrok-free.app"
+# Ollama API endpoint - Remove trailing slash
+OLLAMA_API_URL = "https://d414-34-16-137-7.ngrok-free.app"
 
 # Add a status indicator at the top
 status_container = st.empty()
@@ -16,14 +16,27 @@ status_container.info("Initializing chatbot...")
 def check_api_connection():
     try:
         start_time = time.time()
-        response = requests.get(f"{OLLAMA_API_URL}/api/tags", timeout=3)
+        # Print the full URL for debugging
+        full_url = f"{OLLAMA_API_URL}/api/tags"
+        st.write(f"Connecting to: {full_url}")
+        
+        response = requests.get(full_url, timeout=3)
         elapsed = time.time() - start_time
         
         if response.status_code == 200:
-            status_container.success(f"✅ Connected to Ollama API in {elapsed:.2f}s")
-            return True, response.json().get("models", [])
+            models = response.json().get("models", [])
+            if models:
+                status_container.success(f"✅ Connected to Ollama API in {elapsed:.2f}s")
+                return True, models
+            else:
+                status_container.warning("⚠️ Connected to Ollama API but no models found")
+                st.info("You need to pull the Mistral model first. Run 'ollama pull mistral' on the server.")
+                return False, []
         else:
             status_container.error(f"❌ API returned status code {response.status_code}")
+            # Add more debug info
+            st.error(f"Response content: {response.text[:200]}...")
+            st.info("Make sure to run 'ollama pull mistral' on the server before connecting.")
             return False, []
     except requests.exceptions.Timeout:
         status_container.error("❌ Connection timed out after 3 seconds")
@@ -34,6 +47,32 @@ def check_api_connection():
     except Exception as e:
         status_container.error(f"❌ Error: {str(e)}")
         return False, []
+
+# Function to pull model via API (if server allows it)
+def pull_model(model_name="mistral"):
+    try:
+        st.info(f"Attempting to pull model '{model_name}' via API...")
+        
+        payload = {
+            "name": model_name
+        }
+        
+        with st.spinner(f"Pulling {model_name} model (this may take several minutes)..."):
+            response = requests.post(
+                f"{OLLAMA_API_URL}/api/pull",
+                json=payload,
+                timeout=300  # 5 minute timeout for model pulling
+            )
+        
+        if response.status_code == 200:
+            st.success(f"✅ Successfully pulled {model_name} model!")
+            return True
+        else:
+            st.error(f"Failed to pull model: Status {response.status_code}")
+            return False
+    except Exception as e:
+        st.error(f"Error pulling model: {str(e)}")
+        return False
 
 # Simple function to query Ollama
 def query_ollama(prompt, model="mistral"):
@@ -48,7 +87,7 @@ def query_ollama(prompt, model="mistral"):
             response = requests.post(
                 f"{OLLAMA_API_URL}/api/generate", 
                 json=payload,
-                timeout=10
+                timeout=30
             )
             
         if response.status_code == 200:
@@ -60,6 +99,19 @@ def query_ollama(prompt, model="mistral"):
 
 # App title
 st.title("🤖 Ollama Chatbot")
+
+# Add model pulling option
+with st.expander("Model Management"):
+    st.write("If no models are available, you need to pull one first.")
+    model_to_pull = st.selectbox(
+        "Select model to pull",
+        ["mistral", "llama2", "gemma", "phi"],
+        index=0
+    )
+    if st.button("Pull Selected Model"):
+        success = pull_model(model_to_pull)
+        if success:
+            st.rerun()  # Refresh the app after pulling
 
 # Check connection at startup
 connected, available_models = check_api_connection()
@@ -79,11 +131,37 @@ with st.sidebar:
     else:
         model = "mistral"  # Default model
         st.warning("Using default model: mistral")
+        st.info("Note: You need to pull models before using them.")
     
     # Clear chat button
     if st.button("Clear Chat"):
         st.session_state.messages = []
         st.rerun()
+    
+    # Help section
+    with st.expander("Troubleshooting"):
+        st.markdown("""
+        ### Common Issues:
+        
+        1. **No models available**: Run 'ollama pull mistral' on the server
+        2. **Connection errors**: Check if the ngrok URL is correct and active
+        3. **Slow responses**: Large models may take time to generate responses
+        
+        ### Using with LangChain:
+        
+        ```python
+        from langchain.llms import Ollama
+        
+        # Initialize Ollama with your server URL
+        llm = Ollama(
+            base_url="https://your-ngrok-url",
+            model="mistral"
+        )
+        
+        # Now you can use it with LangChain
+        response = llm("Your prompt here")
+        ```
+        """)
 
 # Display chat history
 for message in st.session_state.messages:
@@ -109,4 +187,5 @@ if connected:
         # Add assistant response to chat
         st.session_state.messages.append({"role": "assistant", "content": response})
 else:
-    st.error("Cannot connect to Ollama API. Please check the connection and reload.")
+    st.error("Cannot connect to Ollama API or no models available.")
+    st.info("Make sure to run 'ollama pull mistral' on the server before connecting.")
